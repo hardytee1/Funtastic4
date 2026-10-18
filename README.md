@@ -12,6 +12,7 @@ A road trip app for travelling together. Everyone in the group sees where the ot
 - Each phone asks Apple Maps for its own route and ETA. The map draws your route to the destination, and the arrival time Apple Maps returns (14:32) is published so other phones count down on their own.
 - Navigate starts turn-by-turn guidance in the app: a banner for the next turn, voice prompts, and a new route if you leave the route. The same menu can still open Google Maps in two-wheeler mode.
 - Sharing keeps running with the screen locked or while using other apps.
+- A Live Activity on the Lock Screen and in the Dynamic Island shows your arrival and everyone else's. If sharing stops while you are moving, a reminder notification says so.
 
 ## System overview
 
@@ -76,7 +77,7 @@ flowchart TB
 | CloudKit | Trip zone shared with `CKShare`; one record per member; `CKDatabaseSubscription` for change nudges; `encryptedValues` for coordinates |
 | ActivityKit + WidgetKit | Live Activity with everyone's ETA on the Lock Screen and Dynamic Island, also shown on CarPlay (iOS 26) and in the Apple Watch Smart Stack |
 | AVFoundation | `AVSpeechSynthesizer` speaks the turn prompts through the navigation audio session (ducking music); the `audio` background mode keeps it speaking with the screen locked |
-| UserNotifications | Alerts like "Sam arrived" or "Made is 20 min behind", and the "sharing stopped" reminder |
+| UserNotifications | The "sharing stopped" reminder, scheduled by iOS itself so it still fires after the app is swiped away. Arrival and "behind" alerts are not built yet |
 
 ## Core logic
 
@@ -124,6 +125,22 @@ flowchart TB
 - Instructions come in the phone's language, and distances in the road units of its region.
 - Friends appear above your ETA bar as one chip each: their name, their arrival time, and how it compares with yours (for example `17.03 · +5 min`). A friend who stopped, arrived, or hasn't updated for 2 minutes shows that instead of an arrival time. Their routes are drawn on the map in their own color, under yours.
 
+### Live Activity and the reminder
+
+The Live Activity is drawn by a small widget extension (`Funtastic4LiveActivity`) from data the app pushes into it; the extension has no logic of its own. `OutsideApp` in the app decides what is shown and when.
+
+| When | Live Activity | Reminder |
+|---|---|---|
+| Trip starts, or the app comes to the front | Starts; picks up the one an earlier run left behind (it may be stale); starts over after ~7 h | Armed once the rider is moving |
+| New numbers (a send, or a friend changes) | Shows them | Pushed back 5 min if moving |
+| A GPS fix while moving (at most once a minute) | Stale time pushed back | Pushed back |
+| Parked | Stale time cleared | Cancelled |
+| Arrived | Final "Arrived" card, gone after 5 min | Cancelled |
+| Trip ended or left | Ends at once | Cancelled |
+| App swiped away while moving | Can't be updated; stale after 5 min if iOS redraws it | Fires after 5 min |
+
+The card shows your arrival time and a countdown that keeps running by itself, then up to four friends (a color dot, their name, and the same arrival summary as the strip on the navigation screen). The Dynamic Island shows the same in its expanded form, the arrival time when compact, and a flag when minimal.
+
 ### Timing
 
 | What | When |
@@ -132,7 +149,7 @@ flowchart TB
 | Upload + fetch | After ≥ 250 m and ≥ 30 s; nothing while parked |
 | Route + ETA | MapKit every ~3 min or when off-route |
 | Extra fetches | Every ~15 s while the map is open, plus APNs nudges |
-| Live Activity | Updated on the phone after each sync; restarted every 8 h |
+| Live Activity | Updated after each sync, and its stale time pushed back at most once a minute while moving. Started only while the app is on screen; restarted the next time the app is opened after ~7 h (iOS ends it at 8 h) |
 
 ## Running in the background
 
@@ -146,9 +163,9 @@ flowchart TB
 
 Because a swiped-away app can't keep sharing, we make it visible instead:
 
-- The rider's Live Activity marks itself stale (ActivityKit `staleDate`) and shows "Sharing stopped, open Funtastic4 to resume".
-- A reminder notification fires if updates stop while the rider is moving. Each send pushes a scheduled local notification ~5 min into the future, and parking cancels it, so it only goes off when sending stops unexpectedly.
-- Friends see "Not updating · last seen 14:05" once the rider's last update is a few minutes old.
+- **A reminder notification** ("Location sharing stopped") fires about 5 min after the last sign of life while the rider is moving. iOS owns the scheduled notification, so it still fires after a swipe-away. Every GPS fix pushes it back (at most once a minute), and parking, arriving or ending the trip cancels it, so it only goes off when updates stop unexpectedly. Tapping it reopens the app. The rider has to allow notifications once; until then iOS silently drops it.
+- **The Live Activity** gets the same stale time and then shows "Sharing stopped. Open Funtastic4 to resume." Whether iOS redraws a card after the app is gone is up to iOS (developers report it sometimes doesn't), so the reminder is the dependable signal. Reopening the app refreshes the card.
+- **Friends** see "Not updating · last seen 14:05" once the rider's last update is a few minutes old.
 
 Relaunching a swiped-away app through significant-location-change monitoring isn't used. Apple describes that relaunch as off-label, and developers report it no longer relaunches force-quit apps on iOS 26.
 
@@ -217,7 +234,8 @@ A trip, step by step:
 - A swiped-away app stops sharing until it's reopened (see [Running in the background](#running-in-the-background)).
 - MapKit has no motorcycle mode, so motorbike ETAs use car routes.
 - How much live traffic MapKit's ETAs include depends on Apple's coverage in each country.
-- Live Activities end after 8 hours.
+- A Live Activity can only be started while the app is on screen, and iOS ends it after 8 hours; the app starts a new one the next time it is opened.
+- A swiped-away app can't update its Live Activity, so the reminder notification is the dependable signal that sharing stopped.
 - Navigation uses MapKit's car routes: no lane guidance, speed limits or incident warnings, and traffic only enters through route refreshes (every ~3 min, or after a reroute).
 - A friend's route is the one their own phone got from MapKit, as of that phone's last update, and it is only as fresh as their last send.
 - Navigation keeps the display on, which is the biggest battery cost (see Battery estimates).
@@ -256,7 +274,8 @@ Current choice: stay with Apple, because traffic-aware ETAs matter more for this
 ## Project setup
 
 - Xcode 26.6, SwiftUI app template
-- Bundle ID `com.hardy.Funtastic4`
+- Bundle ID `com.hardy.Funtastic4`; the Live Activity extension is `com.hardy.Funtastic4.LiveActivity`
+- Two targets: `Funtastic4` (the app) and `Funtastic4LiveActivity` (the widget extension). The `Shared/` folder is compiled into both. Pick your Team for both in Signing & Capabilities.
 - Minimum iOS 26.5
 
 ## License

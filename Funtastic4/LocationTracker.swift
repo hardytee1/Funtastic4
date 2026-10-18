@@ -21,6 +21,9 @@ enum Tuning {
     static let offRouteDistance: CLLocationDistance = 60
     static let offRouteFixes = 4
     static let rerouteInterval: TimeInterval = 20
+    static let stoppedReminderAfter: TimeInterval = 300
+    static let heartbeat: TimeInterval = 60
+    static let activityRestartAfter: TimeInterval = 7 * 3600
 }
 
 /// The last position we published.
