@@ -84,11 +84,8 @@ private struct Path {
     func closest(to target: MKMapPoint, in range: ClosedRange<CLLocationDistance>) -> RouteProgress.Fix {
         var best = RouteProgress.Fix(along: range.lowerBound, offRoute: .infinity)
         for i in points.indices.dropLast() where cumulative[i + 1] >= range.lowerBound && cumulative[i] <= range.upperBound {
-            let a = points[i], b = points[i + 1]
-            let dx = b.x - a.x, dy = b.y - a.y
-            let lengthSquared = dx * dx + dy * dy
-            let t = lengthSquared == 0 ? 0 : min(1, max(0, ((target.x - a.x) * dx + (target.y - a.y) * dy) / lengthSquared))
-            let offRoute = target.distance(to: MKMapPoint(x: a.x + t * dx, y: a.y + t * dy))
+            let (t, foot) = target.projected(ontoSegmentFrom: points[i], to: points[i + 1])
+            let offRoute = target.distance(to: foot)
             if offRoute < best.offRoute {
                 best = RouteProgress.Fix(along: cumulative[i] + t * (cumulative[i + 1] - cumulative[i]), offRoute: offRoute)
             }
@@ -97,6 +94,16 @@ private struct Path {
     }
 }
 
-private extension MKPolyline {
+extension MKPolyline {
     var mapPoints: [MKMapPoint] { Array(UnsafeBufferPointer(start: points(), count: pointCount)) }
+}
+
+extension MKMapPoint {
+    /// The closest point to `self` on the segment from `a` to `b`, and how far along the segment (0 to 1) it is.
+    func projected(ontoSegmentFrom a: MKMapPoint, to b: MKMapPoint) -> (t: Double, foot: MKMapPoint) {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let lengthSquared = dx * dx + dy * dy
+        let t = lengthSquared == 0 ? 0 : min(1, max(0, ((x - a.x) * dx + (y - a.y) * dy) / lengthSquared))
+        return (t, MKMapPoint(x: a.x + t * dx, y: a.y + t * dy))
+    }
 }
