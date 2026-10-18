@@ -1,0 +1,88 @@
+//
+//  TripMapView.swift
+//  Funtastic4
+//
+//  Created by Hardy Tee on 18/10/26.
+//
+
+import MapKit
+import SwiftUI
+
+struct TripMapView: View {
+    private let store = TripStore.shared
+    @State private var confirmEnd = false
+    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+
+    var body: some View {
+        if let trip = store.trip {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    map(for: trip)
+                    memberList
+                        .frame(height: 240)
+                }
+                .navigationTitle(trip.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    Button("End", role: .destructive) { confirmEnd = true }
+                }
+                .confirmationDialog("End this trip?", isPresented: $confirmEnd, titleVisibility: .visible) {
+                    Button("End trip", role: .destructive, action: store.endTrip)
+                }
+            }
+        }
+    }
+
+    private func map(for trip: Trip) -> some View {
+        Map(position: $position) {
+            UserAnnotation()
+            Marker(trip.destinationName, systemImage: "flag.checkered", coordinate: trip.destination.coordinate)
+            ForEach(store.sortedMembers.filter { $0.id != store.myID }) { member in
+                Annotation(member.name, coordinate: member.location.coordinate) {
+                    Circle()
+                        .fill(.tint)
+                        .frame(width: 16, height: 16)
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                }
+            }
+        }
+        .mapControls {
+            MapUserLocationButton()
+            MapCompass()
+        }
+    }
+
+    private var memberList: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            List {
+                if let error = store.errorText {
+                    Text(error).foregroundStyle(.red)
+                }
+                if store.members.isEmpty {
+                    Text("Waiting for your first location…").foregroundStyle(.secondary)
+                }
+                ForEach(store.sortedMembers) { member in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(member.id == store.myID ? "\(member.name) (you)" : member.name)
+                            Text(member.statusText(now: context.date))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let arrival = member.arrival {
+                            VStack(alignment: .trailing) {
+                                Text(arrival, style: .time)
+                                Text(arrival, style: .relative)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text("—").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

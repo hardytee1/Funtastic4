@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		6A1C0F5E2B7D4E8900AB1C01 /* Funtastic4-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Funtastic4-Info.plist"; sourceTree = "<group>"; };
 		44F0E95518A0B7114B778BEC /* Funtastic4.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Funtastic4.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -32,6 +33,7 @@
 		44F0E94C18A0B7114B778BEC = {
 			isa = PBXGroup;
 			children = (
+				6A1C0F5E2B7D4E8900AB1C01 /* Funtastic4-Info.plist */,
 				44F0E95718A0B7114B778BEC /* Funtastic4 */,
 				44F0E95618A0B7114B778BEC /* Products */,
 			);
@@ -253,6 +255,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Funtastic4-Info.plist";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Funtastic4 shares your location with your trip group while a trip is active.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -284,6 +288,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Funtastic4-Info.plist";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Funtastic4 shares your location with your trip group while a trip is active.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

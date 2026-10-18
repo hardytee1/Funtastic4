@@ -9,9 +9,18 @@ import SwiftUI
 
 @main
 struct Funtastic4App: App {
+    private let store = TripStore.shared
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if store.trip != nil {
+                    TripMapView()
+                } else {
+                    StartView()
+                }
+            }
+            .task { store.resume() }
         }
     }
 }
