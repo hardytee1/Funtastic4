@@ -24,14 +24,17 @@ final class TripStore {
     private(set) var isBusy = false
     private(set) var locationError: String?
     private(set) var syncError: String?
-    private(set) var route: MKPolyline?
+    private(set) var route: MKRoute?
+    private(set) var arrivalDate: Date?
 
+    let navigator = Navigator()
     private let cloud = CloudSync()
     private var locationTask: Task<Void, Never>?
     private var sendTask: Task<Void, Never>?
     private var lastSend: SentFix?
+    private var lastFix: CLLocation?
     private var retryNotBefore = Date.distantPast
-    private var arrivalDate: Date?
+    private var rerouteNotBefore = Date.distantPast
     private var routeDate: Date?
 
     var errorText: String? { locationError ?? syncError }
@@ -80,6 +83,12 @@ final class TripStore {
         }
     }
 
+    /// Starts turn-by-turn guidance, using the last known position so the first turn shows at once.
+    func startNavigation() {
+        navigator.start()
+        if let lastFix { _ = navigator.update(lastFix, route: route) }
+    }
+
     /// Called on launch: picks a saved trip back up.
     func resume() {
         if trip != nil, locationTask == nil { startTracking() }
@@ -107,6 +116,7 @@ final class TripStore {
 
     private func clearTrip() {
         stopTracking()
+        navigator.stop()
         sendTask?.cancel()
         sendTask = nil
         trip = nil
@@ -114,7 +124,9 @@ final class TripStore {
         locationError = nil
         syncError = nil
         lastSend = nil
+        lastFix = nil
         retryNotBefore = .distantPast
+        rerouteNotBefore = .distantPast
         arrivalDate = nil
         route = nil
         routeDate = nil
@@ -146,6 +158,15 @@ final class TripStore {
             return
         }
         locationError = nil
+        if let location = update.location { lastFix = location }
+        // Navigation ends the moment the rider arrives, even if the arrival upload fails.
+        if navigator.isActive, let location = update.location, location.distance(from: trip.destination) <= Tuning.arrivalRadius {
+            navigator.stop()
+        }
+        if let location = update.location, navigator.update(location, route: route), Date.now >= rerouteNotBefore {
+            rerouteNotBefore = .now.addingTimeInterval(Tuning.rerouteInterval)
+            Task { await refreshRoute(from: location, to: trip, force: true) }
+        }
         guard sendTask == nil, Date.now >= retryNotBefore, let location = update.location,
               LocationTracker.shouldSend(location, isStationary: update.stationary, destination: trip.destination,
                                          last: lastSend, now: .now)
@@ -168,6 +189,7 @@ final class TripStore {
             lastSend = SentFix(location: location, date: .now, wasStationary: isStationary)
             if arrived {
                 stopTracking()
+                navigator.stop()
                 route = nil
             }
         } catch {
@@ -179,18 +201,20 @@ final class TripStore {
         await refresh()
     }
 
-    /// MapKit does the whole calculation: one request gives the route line and the ETA. We only ask again
-    /// when the last answer is over 3 minutes old, which also redraws the line if the rider left it.
-    private func refreshRoute(from location: CLLocation, to trip: Trip) async {
-        if let routeDate, Date.now.timeIntervalSince(routeDate) < Tuning.routeMaxAge { return }
+    /// MapKit does the whole calculation: one request gives the route and the ETA. We only ask again when the
+    /// last answer is over 3 minutes old, or at once (`force`) when navigation sees the rider leave the route.
+    private func refreshRoute(from location: CLLocation, to trip: Trip, force: Bool = false) async {
+        if !force, let routeDate, Date.now.timeIntervalSince(routeDate) < Tuning.routeMaxAge { return }
         let request = MKDirections.Request()
         request.source = MKMapItem(location: location, address: nil)
         request.destination = MKMapItem(location: trip.destination, address: nil)
         request.transportType = .automobile
         guard let route = try? await MKDirections(request: request).calculate().routes.first else { return }
         arrivalDate = .now.addingTimeInterval(route.expectedTravelTime)
-        self.route = route.polyline
+        self.route = route
         routeDate = .now
+        // A rider who is standing still sends no GPS updates, so show the new route's first turn right away.
+        if let lastFix { _ = navigator.update(lastFix, route: route) }
     }
 
     // MARK: Group state

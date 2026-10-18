@@ -16,6 +16,11 @@ enum Tuning {
     static let routeMaxAge: TimeInterval = 180
     static let staleAfter: TimeInterval = 120
     static let refreshInterval: Duration = .seconds(15)
+    static let farAnnounce: CLLocationDistance = 400
+    static let nearAnnounce: CLLocationDistance = 80
+    static let offRouteDistance: CLLocationDistance = 60
+    static let offRouteFixes = 4
+    static let rerouteInterval: TimeInterval = 20
 }
 
 /// The last position we published.
