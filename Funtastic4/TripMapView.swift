@@ -10,6 +10,7 @@ import SwiftUI
 
 struct TripMapView: View {
     private let store = TripStore.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var confirmEnd = false
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
 
@@ -24,10 +25,26 @@ struct TripMapView: View {
                 .navigationTitle(trip.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    Button("End", role: .destructive) { confirmEnd = true }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        if let url = trip.shareURL {
+                            ShareLink(item: url, message: Text("Join my trip to \(trip.destinationName)"))
+                        }
+                        Button(trip.isOwner ? "End" : "Leave", role: .destructive) { confirmEnd = true }
+                    }
                 }
-                .confirmationDialog("End this trip?", isPresented: $confirmEnd, titleVisibility: .visible) {
-                    Button("End trip", role: .destructive, action: store.endTrip)
+                .confirmationDialog(trip.isOwner ? "End this trip for everyone?" : "Leave this trip?",
+                                    isPresented: $confirmEnd, titleVisibility: .visible) {
+                    Button(trip.isOwner ? "End trip" : "Leave trip", role: .destructive) {
+                        Task { await store.endTrip() }
+                    }
+                }
+                // While the app is on screen, also check for friends' updates every 15 s.
+                .task(id: scenePhase) {
+                    guard scenePhase == .active else { return }
+                    while !Task.isCancelled {
+                        await store.refresh()
+                        try? await Task.sleep(for: Tuning.refreshInterval)
+                    }
                 }
             }
         }

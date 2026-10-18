@@ -15,6 +15,7 @@ enum Tuning {
     static let arrivalRadius: CLLocationDistance = 100
     static let etaMaxAge: TimeInterval = 180
     static let staleAfter: TimeInterval = 120
+    static let refreshInterval: Duration = .seconds(15)
 }
 
 /// The last position we published.

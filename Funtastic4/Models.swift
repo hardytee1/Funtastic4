@@ -9,6 +9,10 @@ import CoreLocation
 import Foundation
 
 struct Trip: Codable, Equatable {
+    var zoneName: String
+    var ownerName: String
+    var isOwner: Bool
+    var shareURL: URL?
     var name: String
     var destinationName: String
     var latitude: Double
