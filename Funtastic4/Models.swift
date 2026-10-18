@@ -39,6 +39,8 @@ struct Member: Identifiable {
     var arrival: Date?
     var updatedAt: Date
     var status: Status
+    /// The route to the destination, thinned out (see `RouteShape`); empty when there is none.
+    var route: [CLLocationCoordinate2D] = []
 
     func statusText(now: Date) -> String {
         let time = updatedAt.formatted(date: .omitted, time: .shortened)
@@ -50,5 +52,20 @@ struct Member: Identifiable {
         case .moving:
             return now.timeIntervalSince(updatedAt) > Tuning.staleAfter ? "Not updating · last seen \(time)" : "Moving"
         }
+    }
+
+    /// A short line for tight spaces: the arrival time and how it compares with mine, or why there is none.
+    func etaSummary(comparedTo mine: Date?, now: Date) -> String {
+        switch status {
+        case .arrived: return "Arrived"
+        case .stopped: return "Stopped"
+        case .moving: break
+        }
+        if now.timeIntervalSince(updatedAt) > Tuning.staleAfter { return "Not updating" }
+        guard let arrival else { return "—" }
+        let time = arrival.formatted(date: .omitted, time: .shortened)
+        guard let mine else { return time }
+        let minutes = Int((arrival.timeIntervalSince(mine) / 60).rounded())
+        return minutes == 0 ? "\(time) · same time" : "\(time) · \(minutes > 0 ? "+" : "−")\(abs(minutes)) min"
     }
 }
