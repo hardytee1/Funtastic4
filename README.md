@@ -35,7 +35,7 @@ flowchart LR
 
 ## Inside the app
 
-The trip engine is the only part we write ourselves. Everything around it is an Apple framework.
+The trip engine is the only part we write ourselves, and it runs on every GPS update. Everything around it is an Apple framework.
 
 ```mermaid
 flowchart TB
@@ -44,7 +44,7 @@ flowchart TB
         liveAct["Live Activity<br/>ActivityKit + WidgetKit"]
         alertsN["Alerts<br/>UserNotifications"]
     end
-    subgraph engine["Trip engine (our Swift code), runs on every GPS update"]
+    subgraph engine["Trip engine (our code)"]
         gate["Update gate<br/>≥ 250 m and ≥ 30 s"] --> etaStep["ETA<br/>MapKit × rider's pace"] --> syncStep["Sync<br/>save mine, fetch all"] --> groupState["Group state<br/>glide pins, sort ETAs"]
     end
     subgraph frameworks["Apple frameworks"]
@@ -107,7 +107,7 @@ Each update carries speed and heading. Other phones move the pin forward smoothl
 flowchart LR
     host["Host's iPhone"]
     friend["Each friend's iPhone"]
-    subgraph container["Funtastic4 CloudKit container"]
+    subgraph container["CloudKit container"]
         subgraph privDB["Host's private database"]
             subgraph zone["Trip zone"]
                 trip["Trip"]
