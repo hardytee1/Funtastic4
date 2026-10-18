@@ -10,7 +10,7 @@ A road trip app for travelling together. Everyone in the group sees where the ot
 - Each phone saves its own position and ETA to a shared CloudKit trip zone and reads everyone else's from it.
 - Friends join with an invite link sent over WhatsApp or Messages.
 - Each phone asks Apple Maps for its own route and ETA. The map draws your route to the destination, and the arrival time Apple Maps returns (14:32) is published so other phones count down on their own.
-- A Navigate button opens Google Maps with turn-by-turn directions in two-wheeler mode.
+- Navigate starts turn-by-turn guidance in the app: a banner for the next turn, voice prompts, and a new route if you leave the route. The same menu can still open Google Maps in two-wheeler mode.
 - Sharing keeps running with the screen locked or while using other apps.
 
 ## System overview
@@ -45,8 +45,10 @@ flowchart TB
         screen["Map screen<br/>SwiftUI + MapKit"]
         liveAct["Live Activity<br/>ActivityKit + WidgetKit"]
         alertsN["Alerts<br/>UserNotifications"]
+        voice["Voice prompts<br/>AVFoundation"]
     end
     subgraph engine["Trip engine (our code)"]
+        navigator["Navigator<br/>next turn, voice, reroute"]
         gate["Update gate<br/>≥ 250 m and ≥ 30 s"] --> etaStep["ETA<br/>MapKit arrival time"] --> syncStep["Sync<br/>save mine, fetch all"] --> groupState["Group state<br/>glide pins, sort ETAs"]
     end
     subgraph frameworks["Apple frameworks"]
@@ -55,6 +57,9 @@ flowchart TB
         cloudKit["CloudKit<br/>shared trip zone"]
     end
     coreLoc --> gate
+    coreLoc --> navigator
+    navigator --> screen & voice
+    navigator -. "reroute" .-> mapKit
     etaStep <--> mapKit
     syncStep <--> cloudKit
     groupState --> screen & liveAct & alertsN
@@ -66,10 +71,11 @@ flowchart TB
 |---|---|
 | SwiftUI | All screens |
 | MapKit for SwiftUI | `Map`, a pin per member (`Annotation`), route line (`MapPolyline`) |
-| MapKit | `MKDirections.calculate` returns the route line and each rider's ETA in one request; `MKLocalSearch` finds the destination and stops |
+| MapKit | `MKDirections.calculate` returns the route line, its turn-by-turn steps and each rider's ETA in one request; `MKLocalSearch` finds the destination and stops |
 | Core Location | `CLLocationUpdate.liveUpdates()` for GPS; `CLBackgroundActivitySession` keeps it running with the screen locked or in other apps; `CLMonitor` detects arrival |
 | CloudKit | Trip zone shared with `CKShare`; one record per member; `CKDatabaseSubscription` for change nudges; `encryptedValues` for coordinates |
 | ActivityKit + WidgetKit | Live Activity with everyone's ETA on the Lock Screen and Dynamic Island, also shown on CarPlay (iOS 26) and in the Apple Watch Smart Stack |
+| AVFoundation | `AVSpeechSynthesizer` speaks the turn prompts through the navigation audio session (ducking music); the `audio` background mode keeps it speaking with the screen locked |
 | UserNotifications | Alerts like "Sam arrived" or "Made is 20 min behind", and the "sharing stopped" reminder |
 
 ## Core logic
@@ -93,6 +99,28 @@ Each phone asks only for its own ETA, so a group of N people makes N requests, n
 
 Each update carries speed and heading. Other phones move the pin forward smoothly until the next update arrives.
 
+### Navigation
+
+Navigation runs on the route MapKit already gave us, and looks at every GPS fix (about once a second while moving), not only the ones we publish.
+
+```mermaid
+flowchart TB
+    fix["GPS fix"] --> locate["Project the fix onto the route line<br/>(meters from the start, meters off the line)"]
+    locate --> turn["Next turn = first step end still ahead"]
+    turn --> banner["Banner: distance + instruction"]
+    turn --> speak{"≤ 400 m or ≤ 80 m away<br/>and not announced yet?"}
+    speak -- yes --> voice["Speak it"]
+    locate --> off{"> 60 m off the line<br/>for 4 accurate fixes?"}
+    off -- yes --> reroute["New MapKit route from here<br/>(at most every 20 s)"]
+```
+
+- MapKit steps read "drive this far, then do the instruction", so each instruction belongs at the end of its step's line. Turns and the rider are both measured along the same line, so distances agree.
+- Each turn is announced twice, at about 400 m and about 80 m. A turn is identified by its junction, so a refreshed route does not repeat an announcement.
+- Leaving the route needs 4 accurate fixes in a row more than 60 m off the line, so a tunnel or tall buildings can't trigger a reroute. A new route is requested at most every 20 s, to stay inside MapKit's request limits.
+- Navigation ends when the rider is within 100 m of the destination, even if iCloud can't be reached.
+- The screen stays on and the map follows the rider's heading while navigating. The next turn shows at once, using the last known position, even when the rider is standing still.
+- Instructions come in the phone's language, and distances in the road units of its region.
+
 ### Timing
 
 | What | When |
@@ -110,6 +138,7 @@ Each update carries speed and heading. Other phones move the pin forward smoothl
 | Screen locked | Keeps sharing. The background location session keeps GPS running, and the blue location indicator shows it. |
 | Using another app (for example, navigating in Google Maps) | Keeps sharing, same as above. |
 | Parked | iOS pauses GPS to save battery and resumes it when the phone moves. |
+| Navigating, screen locked | Voice prompts keep speaking (the `audio` background mode). The display is only kept on while the app is open. |
 | App swiped away (force-quit) | iOS stops the app on purpose and doesn't restart it until the rider opens it again. |
 
 Because a swiped-away app can't keep sharing, we make it visible instead:
@@ -186,11 +215,13 @@ A trip, step by step:
 - MapKit has no motorcycle mode, so motorbike ETAs use car routes.
 - How much live traffic MapKit's ETAs include depends on Apple's coverage in each country.
 - Live Activities end after 8 hours.
+- Navigation uses MapKit's car routes: no lane guidance, speed limits or incident warnings, and traffic only enters through route refreshes (every ~3 min, or after a reroute).
+- Navigation keeps the display on, which is the biggest battery cost (see Battery estimates).
 
 ## Open decisions
 
 - **Map provider:** Apple for now; see the comparison below.
-- **Turn-by-turn navigation:** for now the Navigate button opens Google Maps in two-wheeler mode. Still open: build our own navigation screen on MapKit (car routes only, a few weeks of work).
+- **Friends on the navigation screen:** their routes and ETAs next to yours.
 - **Motorbike ETA adjustment:** only if MapKit's car ETAs prove consistently off in testing.
 - **Minimum iOS version:** 26.5 now (the Xcode default); the frameworks above work back to iOS 18.
 - **Spoken updates** through helmet intercoms (AVFoundation): left out for now.
@@ -202,7 +233,7 @@ A trip, step by step:
 | Map display | MapKit | MapLibre with OSM map tiles from a tile host | Google Maps SDK |
 | Place search | `MKLocalSearch` | Open search services (Nominatim, Photon) | Places API |
 | Motorbike routes | No, car routes only | Yes: Valhalla `motorcycle` and `motor_scooter` modes | Yes: two-wheeler mode (beta) |
-| Turn-by-turn | We build it ourselves | Ferrostar, an open-source navigation kit | Navigation SDK, or hand off to the Google Maps app |
+| Turn-by-turn | Built into this app on MapKit's steps (car routes only) | Ferrostar, an open-source navigation kit | Navigation SDK, or hand off to the Google Maps app |
 | Traffic in ETAs | Yes: normal traffic for the time of day, and apparently current conditions | None; OSM records roads, not how busy they are | Yes |
 | Cost and hosting | Free, no server | Tile and routing host: free tiers for testing, paid or our own server for real use | Pay per request |
 | All Apple | Yes | No | No |
