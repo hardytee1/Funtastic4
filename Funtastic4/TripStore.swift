@@ -29,10 +29,12 @@ final class TripStore {
 
     let navigator = Navigator()
     private let cloud = CloudSync()
+    private let outside = OutsideApp()
     private var locationTask: Task<Void, Never>?
     private var sendTask: Task<Void, Never>?
     private var lastSend: SentFix?
     private var lastFix: CLLocation?
+    private var isMoving = false
     private var retryNotBefore = Date.distantPast
     private var rerouteNotBefore = Date.distantPast
     private var routeDate: Date?
@@ -92,6 +94,11 @@ final class TripStore {
         if let lastFix { _ = navigator.update(lastFix, route: route) }
     }
 
+    /// Called whenever the app comes to the front, the only time iOS lets us start a Live Activity.
+    func appBecameActive() {
+        if let trip { outside.ensureRunning(for: trip, myArrival: arrivalDate, friends: friends) }
+    }
+
     /// Called on launch: picks a saved trip back up.
     func resume() {
         if trip != nil, locationTask == nil { startTracking() }
@@ -120,6 +127,8 @@ final class TripStore {
     private func clearTrip() {
         stopTracking()
         navigator.stop()
+        outside.end()
+        isMoving = false
         sendTask?.cancel()
         sendTask = nil
         trip = nil
@@ -163,6 +172,8 @@ final class TripStore {
         }
         locationError = nil
         if let location = update.location { lastFix = location }
+        isMoving = !update.stationary
+        outside.heartbeat(moving: isMoving)
         // Navigation ends the moment the rider arrives, even if the arrival upload fails.
         if navigator.isActive, let location = update.location, location.distance(from: trip.destination) <= Tuning.arrivalRadius {
             navigator.stop()
@@ -197,6 +208,10 @@ final class TripStore {
                 navigator.stop()
                 route = nil
                 routeShape = []
+                isMoving = false
+                outside.end(arrived: true, myArrival: arrivalDate, friends: friends)
+            } else {
+                outside.update(myArrival: arrivalDate, friends: friends, moving: isMoving)
             }
         } catch {
             guard self.trip == trip else { return }
@@ -234,6 +249,7 @@ final class TripStore {
             guard self.trip == trip else { return }
             for member in changes.members { members[member.id] = member }
             for id in changes.deleted { members[id] = nil }
+            outside.update(myArrival: arrivalDate, friends: friends, moving: isMoving)
             syncError = nil
         } catch {
             guard self.trip == trip else { return }

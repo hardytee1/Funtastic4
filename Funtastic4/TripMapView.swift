@@ -59,6 +59,7 @@ struct TripMapView: View {
                 // While the app is on screen, also check for friends' updates every 15 s.
                 .task(id: scenePhase) {
                     guard scenePhase == .active else { return }
+                    store.appBecameActive()
                     while !Task.isCancelled {
                         await store.refresh()
                         try? await Task.sleep(for: Tuning.refreshInterval)
@@ -220,8 +221,5 @@ struct TripMapView: View {
 
 extension Member {
     /// The same color on every phone for a person's pin, route and chip (blue is kept for me).
-    var color: Color {
-        let palette: [Color] = [.red, .orange, .purple, .pink, .teal, .indigo, .brown, .mint]
-        return palette[id.unicodeScalars.reduce(0) { ($0 * 31 + Int($1.value)) % palette.count }]
-    }
+    var color: Color { PersonColor.color(for: id) }
 }
