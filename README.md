@@ -188,11 +188,35 @@ A trip, step by step:
 
 ## Open decisions
 
+- **Map provider:** Apple for now; see the comparison below.
 - **Turn-by-turn navigation:** a Navigate button that opens Google Maps in motorcycle mode, or our own navigation screen built on MapKit.
 - **Motorbike ETA adjustment:** only if MapKit's car ETAs prove consistently off in testing.
 - **Minimum iOS version:** 26.5 now (the Xcode default); the frameworks above work back to iOS 18.
 - **Spoken updates** through helmet intercoms (AVFoundation): left out for now.
-- **Google two-wheeler routing:** left out for now (paid, not Apple).
+
+### Map provider: Apple vs open source vs Google
+
+| | Apple MapKit (current) | Open source (OpenStreetMap) | Google (paid) |
+|---|---|---|---|
+| Map display | MapKit | MapLibre with OSM map tiles from a tile host | Google Maps SDK |
+| Place search | `MKLocalSearch` | Open search services (Nominatim, Photon) | Places API |
+| Motorbike routes | No, car routes only | Yes: Valhalla `motorcycle` and `motor_scooter` modes | Yes: two-wheeler mode (beta) |
+| Turn-by-turn | We build it ourselves | Ferrostar, an open-source navigation kit | Navigation SDK, or hand off to the Google Maps app |
+| Traffic in ETAs | Yes: normal traffic for the time of day, and apparently current conditions | None; OSM records roads, not how busy they are | Yes |
+| Cost and hosting | Free, no server | Tile and routing host: free tiers for testing, paid or our own server for real use | Pay per request |
+| All Apple | Yes | No | No |
+
+On a 30 km test route:
+
+| Route | Distance | ETA leaving Mon 17:30 / 3 am |
+|---|---|---|
+| Apple MapKit, car | 29.9 km | 79 / 49 min |
+| OSM + Valhalla, car | 31.0 km | 60 / 60 min |
+| OSM + Valhalla, motor scooter | 30.4 km, on smaller roads | 63 min, time of day not considered |
+
+Mixing providers isn't an option. Apple's developer agreement (Attachment 6, §2.4) only allows Apple's map data, which includes traffic data, to be displayed on an Apple map, so an open-source map can't show MapKit ETAs. Read strictly, showing Apple ETAs in the Live Activity, which has no map, is a gray area as well.
+
+Current choice: stay with Apple, because traffic-aware ETAs matter more for this app than motorbike-specific routes; in the test, the car and motorbike routes were about the same length. Revisit if offline maps or motorbike-only roads become important.
 
 ## Project setup
 
