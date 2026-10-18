@@ -36,8 +36,11 @@ final class TripStore {
     private var retryNotBefore = Date.distantPast
     private var rerouteNotBefore = Date.distantPast
     private var routeDate: Date?
+    private var routeShape: [CLLocationCoordinate2D] = []
 
     var errorText: String? { locationError ?? syncError }
+
+    var friends: [Member] { sortedMembers.filter { $0.id != myID } }
 
     var sortedMembers: [Member] {
         members.values.sorted { ($0.arrival ?? .distantFuture, $0.name) < ($1.arrival ?? .distantFuture, $1.name) }
@@ -129,6 +132,7 @@ final class TripStore {
         rerouteNotBefore = .distantPast
         arrivalDate = nil
         route = nil
+        routeShape = []
         routeDate = nil
         UserDefaults.standard.removeObject(forKey: Self.tripKey)
     }
@@ -182,7 +186,8 @@ final class TripStore {
             let arrived = location.distance(from: trip.destination) <= Tuning.arrivalRadius
             let member = Member(id: myID, name: myName, location: location, speed: max(location.speed, 0),
                                 heading: max(location.course, 0), arrival: arrived ? .now : arrivalDate,
-                                updatedAt: .now, status: arrived ? .arrived : (isStationary ? .stopped : .moving))
+                                updatedAt: .now, status: arrived ? .arrived : (isStationary ? .stopped : .moving),
+                                route: arrived ? [] : routeShape)
             try await cloud.save(member, in: trip)
             guard self.trip == trip else { return }
             members[member.id] = member
@@ -191,6 +196,7 @@ final class TripStore {
                 stopTracking()
                 navigator.stop()
                 route = nil
+                routeShape = []
             }
         } catch {
             guard self.trip == trip else { return }
@@ -212,6 +218,7 @@ final class TripStore {
         guard let route = try? await MKDirections(request: request).calculate().routes.first else { return }
         arrivalDate = .now.addingTimeInterval(route.expectedTravelTime)
         self.route = route
+        routeShape = RouteShape.simplify(route.polyline)
         routeDate = .now
         // A rider who is standing still sends no GPS updates, so show the new route's first turn right away.
         if let lastFix { _ = navigator.update(lastFix, route: route) }

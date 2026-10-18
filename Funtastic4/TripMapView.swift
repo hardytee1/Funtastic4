@@ -23,6 +23,7 @@ struct TripMapView: View {
                     map(for: trip)
                         .safeAreaInset(edge: .top) { turnBanner }
                     if navigator.isActive {
+                        if !store.friends.isEmpty { friendStrip }
                         navigationBar
                     } else {
                         memberList
@@ -73,15 +74,20 @@ struct TripMapView: View {
 
     private func map(for trip: Trip) -> some View {
         Map(position: $position) {
+            ForEach(store.friends) { friend in
+                if friend.route.count > 1 {
+                    MapPolyline(coordinates: friend.route).stroke(friend.color.opacity(0.7), lineWidth: 3)
+                }
+            }
             if let route = store.route {
                 MapPolyline(route.polyline).stroke(.blue, lineWidth: 5)
             }
             UserAnnotation()
             Marker(trip.destinationName, systemImage: "flag.checkered", coordinate: trip.destination.coordinate)
-            ForEach(store.sortedMembers.filter { $0.id != store.myID }) { member in
+            ForEach(store.friends) { member in
                 Annotation(member.name, coordinate: member.location.coordinate) {
                     Circle()
-                        .fill(.tint)
+                        .fill(member.color)
                         .frame(width: 16, height: 16)
                         .overlay(Circle().stroke(.white, lineWidth: 2))
                 }
@@ -144,6 +150,36 @@ struct TripMapView: View {
         .background(.bar)
     }
 
+    /// Everyone else's arrival time and how it compares with mine, for the navigation screen.
+    private var friendStrip: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(store.friends) { friend in
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(friend.color)
+                                .frame(width: 12, height: 12)
+                            VStack(alignment: .leading) {
+                                Text(friend.name)
+                                    .font(.subheadline.bold())
+                                Text(friend.etaSummary(comparedTo: store.arrivalDate, now: context.date))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
     private var memberList: some View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             List {
@@ -155,6 +191,9 @@ struct TripMapView: View {
                 }
                 ForEach(store.sortedMembers) { member in
                     HStack {
+                        Circle()
+                            .fill(member.id == store.myID ? Color.blue : member.color)
+                            .frame(width: 12, height: 12)
                         VStack(alignment: .leading) {
                             Text(member.id == store.myID ? "\(member.name) (you)" : member.name)
                             Text(member.statusText(now: context.date))
@@ -176,5 +215,13 @@ struct TripMapView: View {
                 }
             }
         }
+    }
+}
+
+extension Member {
+    /// The same color on every phone for a person's pin, route and chip (blue is kept for me).
+    var color: Color {
+        let palette: [Color] = [.red, .orange, .purple, .pink, .teal, .indigo, .brown, .mint]
+        return palette[id.unicodeScalars.reduce(0) { ($0 * 31 + Int($1.value)) % palette.count }]
     }
 }

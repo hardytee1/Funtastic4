@@ -62,6 +62,7 @@ final class CloudSync {
         record["arrival"] = member.arrival
         record["updatedAt"] = member.updatedAt
         record["status"] = member.status.rawValue
+        record.encryptedValues["route"] = RouteShape.encode(member.route)
         try await save([record], in: database(trip))
     }
 
@@ -134,6 +135,7 @@ private extension Member {
         else { return nil }
         self.init(id: record.recordID.recordName, name: name, location: location,
                   speed: record["speed"] as? Double ?? 0, heading: record["heading"] as? Double ?? 0,
-                  arrival: record["arrival"] as? Date, updatedAt: updatedAt, status: status)
+                  arrival: record["arrival"] as? Date, updatedAt: updatedAt, status: status,
+                  route: (record.encryptedValues["route"] as? Data).map { RouteShape.decode($0) } ?? [])
     }
 }

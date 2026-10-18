@@ -6,7 +6,7 @@ A road trip app for travelling together. Everyone in the group sees where the ot
 
 ## How it works
 
-- Everyone who joins the trip shares their own location and ETA. Anyone can pause sharing.
+- Everyone who joins the trip shares their own location, ETA and route. Anyone can pause sharing.
 - Each phone saves its own position and ETA to a shared CloudKit trip zone and reads everyone else's from it.
 - Friends join with an invite link sent over WhatsApp or Messages.
 - Each phone asks Apple Maps for its own route and ETA. The map draws your route to the destination, and the arrival time Apple Maps returns (14:32) is published so other phones count down on their own.
@@ -95,6 +95,8 @@ MapKit does the whole calculation on Apple's servers; the app doesn't compute ro
 
 Each phone asks only for its own ETA, so a group of N people makes N requests, not N².
 
+The same request gives each phone its route, and that route is shared too, so nobody has to ask MapKit about anyone else's. It is thinned out first (every point within about 10 m of the real line, at most 300 points), packed into bytes, encrypted, and saved with the rider's `Member` record. That is about 1 KB for a 30 km trip. Friends' phones draw it on the map in that friend's color. When a rider arrives, their route is cleared.
+
 ### Between updates
 
 Each update carries speed and heading. Other phones move the pin forward smoothly until the next update arrives.
@@ -120,6 +122,7 @@ flowchart TB
 - Navigation ends when the rider is within 100 m of the destination, even if iCloud can't be reached.
 - The screen stays on and the map follows the rider's heading while navigating. The next turn shows at once, using the last known position, even when the rider is standing still.
 - Instructions come in the phone's language, and distances in the road units of its region.
+- Friends appear above your ETA bar as one chip each: their name, their arrival time, and how it compares with yours (for example `17.03 · +5 min`). A friend who stopped, arrived, or hasn't updated for 2 minutes shows that instead of an arrival time. Their routes are drawn on the map in their own color, under yours.
 
 ### Timing
 
@@ -196,7 +199,7 @@ flowchart LR
 | Record | One per | Fields |
 |---|---|---|
 | `Trip` | group | name, destination, stops |
-| `Member` | person | name, avatar, location (encrypted), speed, heading, arrival time, last update, status (moving / stopped / paused / arrived) |
+| `Member` | person | name, avatar, location (encrypted), speed, heading, arrival time, last update, status (moving / stopped / paused / arrived), route (encrypted, thinned out) |
 
 A trip, step by step:
 
@@ -216,12 +219,12 @@ A trip, step by step:
 - How much live traffic MapKit's ETAs include depends on Apple's coverage in each country.
 - Live Activities end after 8 hours.
 - Navigation uses MapKit's car routes: no lane guidance, speed limits or incident warnings, and traffic only enters through route refreshes (every ~3 min, or after a reroute).
+- A friend's route is the one their own phone got from MapKit, as of that phone's last update, and it is only as fresh as their last send.
 - Navigation keeps the display on, which is the biggest battery cost (see Battery estimates).
 
 ## Open decisions
 
 - **Map provider:** Apple for now; see the comparison below.
-- **Friends on the navigation screen:** their routes and ETAs next to yours.
 - **Motorbike ETA adjustment:** only if MapKit's car ETAs prove consistently off in testing.
 - **Minimum iOS version:** 26.5 now (the Xcode default); the frameworks above work back to iOS 18.
 - **Spoken updates** through helmet intercoms (AVFoundation): left out for now.
