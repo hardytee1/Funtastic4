@@ -12,7 +12,7 @@ struct TripMapView: View {
     private let store = TripStore.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmEnd = false
-    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var position: MapCameraPosition = .automatic
 
     var body: some View {
         if let trip = store.trip {
@@ -26,6 +26,9 @@ struct TripMapView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
+                        Link(destination: trip.navigationURL) {
+                            Label("Navigate", systemImage: "arrow.triangle.turn.up.right.diamond")
+                        }
                         if let url = trip.shareURL {
                             ShareLink(item: url, message: Text("Join my trip to \(trip.destinationName)"))
                         }
@@ -52,6 +55,9 @@ struct TripMapView: View {
 
     private func map(for trip: Trip) -> some View {
         Map(position: $position) {
+            if let route = store.route {
+                MapPolyline(route).stroke(.blue, lineWidth: 5)
+            }
             UserAnnotation()
             Marker(trip.destinationName, systemImage: "flag.checkered", coordinate: trip.destination.coordinate)
             ForEach(store.sortedMembers.filter { $0.id != store.myID }) { member in

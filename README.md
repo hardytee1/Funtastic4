@@ -9,7 +9,8 @@ A road trip app for travelling together. Everyone in the group sees where the ot
 - Everyone who joins the trip shares their own location and ETA. Anyone can pause sharing.
 - Each phone saves its own position and ETA to a shared CloudKit trip zone and reads everyone else's from it.
 - Friends join with an invite link sent over WhatsApp or Messages.
-- Each phone asks Apple Maps for its own ETA and publishes the arrival time Apple Maps returns (14:32), so other phones count down on their own.
+- Each phone asks Apple Maps for its own route and ETA. The map draws your route to the destination, and the arrival time Apple Maps returns (14:32) is published so other phones count down on their own.
+- A Navigate button opens Google Maps with turn-by-turn directions in two-wheeler mode.
 - Sharing keeps running with the screen locked or while using other apps.
 
 ## System overview
@@ -65,7 +66,7 @@ flowchart TB
 |---|---|
 | SwiftUI | All screens |
 | MapKit for SwiftUI | `Map`, a pin per member (`Annotation`), route line (`MapPolyline`) |
-| MapKit | `MKDirections.calculateETA` returns each rider's ETA and arrival time; `MKLocalSearch` finds the destination and stops |
+| MapKit | `MKDirections.calculate` returns the route line and each rider's ETA in one request; `MKLocalSearch` finds the destination and stops |
 | Core Location | `CLLocationUpdate.liveUpdates()` for GPS; `CLBackgroundActivitySession` keeps it running with the screen locked or in other apps; `CLMonitor` detects arrival |
 | CloudKit | Trip zone shared with `CKShare`; one record per member; `CKDatabaseSubscription` for change nudges; `encryptedValues` for coordinates |
 | ActivityKit + WidgetKit | Live Activity with everyone's ETA on the Lock Screen and Dynamic Island, also shown on CarPlay (iOS 26) and in the Apple Watch Smart Stack |
@@ -84,7 +85,7 @@ Readings with an accuracy radius worse than about 50 m are skipped (tunnels, thi
 
 ### ETA
 
-MapKit does the whole ETA calculation on Apple's servers; the app doesn't compute ETAs itself. Every ~3 min, or when the rider leaves the route, the app calls `MKDirections.calculateETA` and publishes the `expectedArrivalDate` it returns. Other phones count down from that time, so the figure never goes stale.
+MapKit does the whole calculation on Apple's servers; the app doesn't compute routes or ETAs itself. Every ~3 min, or when the rider leaves the route, the app calls `MKDirections.calculate`. The route's polyline is drawn on the map, and `now + expectedTravelTime` is published as the arrival time. Other phones count down from that time, so the figure never goes stale. (`calculate` and `calculateETA` returned the same travel time on test routes, so one request serves both.)
 
 Each phone asks only for its own ETA, so a group of N people makes N requests, not N².
 
@@ -98,7 +99,7 @@ Each update carries speed and heading. Other phones move the pin forward smoothl
 |---|---|
 | GPS | `liveUpdates` while moving; pauses itself when parked |
 | Upload + fetch | After ≥ 250 m and ≥ 30 s; nothing while parked |
-| ETA | MapKit ETA every ~3 min or when off-route |
+| Route + ETA | MapKit every ~3 min or when off-route |
 | Extra fetches | Every ~15 s while the map is open, plus APNs nudges |
 | Live Activity | Updated on the phone after each sync; restarted every 8 h |
 
@@ -189,7 +190,7 @@ A trip, step by step:
 ## Open decisions
 
 - **Map provider:** Apple for now; see the comparison below.
-- **Turn-by-turn navigation:** a Navigate button that opens Google Maps in motorcycle mode, or our own navigation screen built on MapKit.
+- **Turn-by-turn navigation:** for now the Navigate button opens Google Maps in two-wheeler mode. Still open: build our own navigation screen on MapKit (car routes only, a few weeks of work).
 - **Motorbike ETA adjustment:** only if MapKit's car ETAs prove consistently off in testing.
 - **Minimum iOS version:** 26.5 now (the Xcode default); the frameworks above work back to iOS 18.
 - **Spoken updates** through helmet intercoms (AVFoundation): left out for now.

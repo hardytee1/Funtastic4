@@ -24,6 +24,7 @@ final class TripStore {
     private(set) var isBusy = false
     private(set) var locationError: String?
     private(set) var syncError: String?
+    private(set) var route: MKPolyline?
 
     private let cloud = CloudSync()
     private var locationTask: Task<Void, Never>?
@@ -31,7 +32,7 @@ final class TripStore {
     private var lastSend: SentFix?
     private var retryNotBefore = Date.distantPast
     private var arrivalDate: Date?
-    private var etaDate: Date?
+    private var routeDate: Date?
 
     var errorText: String? { locationError ?? syncError }
 
@@ -115,7 +116,8 @@ final class TripStore {
         lastSend = nil
         retryNotBefore = .distantPast
         arrivalDate = nil
-        etaDate = nil
+        route = nil
+        routeDate = nil
         UserDefaults.standard.removeObject(forKey: Self.tripKey)
     }
 
@@ -153,7 +155,7 @@ final class TripStore {
 
     private func send(_ location: CLLocation, isStationary: Bool, to trip: Trip) async {
         defer { if !Task.isCancelled { sendTask = nil } }
-        await refreshETA(from: location, to: trip)
+        await refreshRoute(from: location, to: trip)
         do {
             try await ensureMyID()
             let arrived = location.distance(from: trip.destination) <= Tuning.arrivalRadius
@@ -164,7 +166,10 @@ final class TripStore {
             guard self.trip == trip else { return }
             members[member.id] = member
             lastSend = SentFix(location: location, date: .now, wasStationary: isStationary)
-            if arrived { stopTracking() }
+            if arrived {
+                stopTracking()
+                route = nil
+            }
         } catch {
             guard self.trip == trip else { return }
             retryNotBefore = .now.addingTimeInterval(Tuning.minInterval)
@@ -174,16 +179,18 @@ final class TripStore {
         await refresh()
     }
 
-    /// MapKit does the whole calculation; we only ask again when the last answer is over 3 minutes old.
-    private func refreshETA(from location: CLLocation, to trip: Trip) async {
-        if let etaDate, Date.now.timeIntervalSince(etaDate) < Tuning.etaMaxAge { return }
+    /// MapKit does the whole calculation: one request gives the route line and the ETA. We only ask again
+    /// when the last answer is over 3 minutes old, which also redraws the line if the rider left it.
+    private func refreshRoute(from location: CLLocation, to trip: Trip) async {
+        if let routeDate, Date.now.timeIntervalSince(routeDate) < Tuning.routeMaxAge { return }
         let request = MKDirections.Request()
         request.source = MKMapItem(location: location, address: nil)
         request.destination = MKMapItem(location: trip.destination, address: nil)
         request.transportType = .automobile
-        guard let response = try? await MKDirections(request: request).calculateETA() else { return }
-        arrivalDate = response.expectedArrivalDate
-        etaDate = .now
+        guard let route = try? await MKDirections(request: request).calculate().routes.first else { return }
+        arrivalDate = .now.addingTimeInterval(route.expectedTravelTime)
+        self.route = route.polyline
+        routeDate = .now
     }
 
     // MARK: Group state

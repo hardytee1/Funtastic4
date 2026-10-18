@@ -13,7 +13,7 @@ enum Tuning {
     static let minInterval: TimeInterval = 30
     static let maxAccuracy: CLLocationAccuracy = 50
     static let arrivalRadius: CLLocationDistance = 100
-    static let etaMaxAge: TimeInterval = 180
+    static let routeMaxAge: TimeInterval = 180
     static let staleAfter: TimeInterval = 120
     static let refreshInterval: Duration = .seconds(15)
 }

@@ -19,6 +19,11 @@ struct Trip: Codable, Equatable {
     var longitude: Double
 
     var destination: CLLocation { CLLocation(latitude: latitude, longitude: longitude) }
+
+    /// Opens Google Maps with turn-by-turn directions in two-wheeler mode (the web page if the app is missing).
+    var navigationURL: URL {
+        URL(string: "https://www.google.com/maps/dir/?api=1&destination=\(latitude),\(longitude)&travelmode=two-wheeler&dir_action=navigate")!
+    }
 }
 
 struct Member: Identifiable {
